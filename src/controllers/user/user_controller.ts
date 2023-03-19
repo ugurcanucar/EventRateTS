@@ -1,62 +1,93 @@
+import bcrypt from "bcrypt";
 import { Request, Response } from "express";
-import {
-  GenericListResponse,
-  GenericResponse,
-} from "src/dtos/generic_response";
-import { UserDto } from "../../dtos/userDto";
-import { UserEntity } from "../../entities/user";
-import { UserRepository } from "../../repositories/user_repository";
+import jwt from "jsonwebtoken";
+import { LoginUserRequestDto } from "src/dtos/user/login_user_request_dto";
+import { LoginUserResponseDto } from "src/dtos/user/login_user_response_dto";
+import { RegisterUserRequestDto } from "src/dtos/user/register/register_user_request_dto";
+import { UserEntity } from "src/entities/user";
+import { UserRepository } from "src/repositories/user_repository";
+import { GenericResponse } from "../../dtos/generic_response";
+import { GenericController } from "../generic/generic_controller";
 
-export default class UserController {
-  private _repository: UserRepository;
+export default class UserController extends GenericController<UserEntity> {
+  protected _repository: UserRepository;
 
-  constructor() {
-    this._repository = new UserRepository("users");
+  constructor(repository: UserRepository) {
+    super(repository);
+    this._repository = repository;
   }
 
-  getUsers = async (_: Request, res: Response) => {
-    try {
-      const resp: UserEntity[] = await this._repository.getAll();
+  register = async (req: Request<RegisterUserRequestDto>, res: Response) => {
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    req.body.password = hashedPassword;
+    const registerModel: UserEntity = await this._repository.create(req.body);
+    const token = jwt.sign(
+      {
+        id: registerModel.id,
+        fullName: registerModel.fullName,
+        email: registerModel.email,
+      },
+      process.env.JWT_SECRET || "SECRET_KEY",
+      { expiresIn: "1h" }
+    );
+    let responseModel: LoginUserResponseDto = {
+      email: registerModel.email,
+      fullName: registerModel.fullName,
+      id: registerModel.id,
+      token,
+      createdDate: registerModel.createdDate,
+      isDeleted: registerModel.isDeleted,
+      updatedDate: registerModel.updatedDate,
+    };
 
-      const userDto: UserDto[] = resp.map((element) => {
-        const dto: UserDto = {
-          email: element.email,
-          fullName: element.fullName,
-          id: element.id,
-          createdDate: element.createdDate,
-          isDeleted: element.isDeleted,
-          updatedDate: element.updatedDate,
-        };
-        return dto;
-      });
-
-      const genericList: GenericListResponse<UserDto> = {
-        data: userDto,
-        isSuccess: true,
-        message: "İşlem Başarılı.",
-      };
-
-      return res.json(genericList);
-    } catch (error) {
-      return res.status(400).json({
-        message: error.message,
-      });
+    if (registerModel === null) {
+      return res.json({ message: "Başarısız!" });
     }
+    const registerResponse: GenericResponse<LoginUserResponseDto> = {
+      data: responseModel === undefined ? {} : responseModel,
+      isSuccess: true,
+      message:
+        responseModel === undefined
+          ? "Böyle bir kayıt bulunamamıştır"
+          : "İşlem Başarılı",
+    };
+
+    return res.json(registerResponse);
   };
 
-  createUser = async (req: Request<UserEntity>, res: Response) => {
+  login = async (req: Request<LoginUserRequestDto>, res: Response) => {
     try {
-      const resp: UserEntity = await this._repository.create(req.body);
-      const genericResponse: GenericResponse<UserEntity> = {
-        data: resp,
+      const user = await this._repository.getOneWithCondition({
+        email: req.body.email,
+      });
+      const token = jwt.sign(
+        {
+          id: user.id,
+          fullName: user.fullName,
+          email: user.email,
+        },
+        process.env.JWT_SECRET || "SECRET_KEY",
+        { expiresIn: "1h" }
+      );
+      user.token = token;
+      const registerResponse: GenericResponse<LoginUserResponseDto> = {
+        data: user === undefined ? {} : user,
         isSuccess: true,
-        message: "İşlem Başarılı.",
+        message:
+          user === undefined
+            ? "Böyle bir kayıt bulunamamıştır"
+            : "İşlem Başarılı",
       };
-      return res.json(genericResponse);
+
+      return res.status(200).json(registerResponse);
     } catch (error) {
-      return res.json({ message: error.message });
+      return res.status(500).json({ message: "Hatalı İşlem" });
     }
+
+    // const registerModel = await this._repository.login(req, res);
+    // if (registerModel === null) {
+    //   return res.json({ message: "Başarısız!" });
+    // }
+    // return await this.create(registerModel, res);
   };
 }
-
-// export const

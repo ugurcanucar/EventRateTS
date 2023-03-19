@@ -1,18 +1,16 @@
 import { Router } from "express";
-import { UserRepository } from "../repositories/user_repository";
+import { EventRepository } from "../repositories/event_repository";
 
-import UserController from "../controllers/user/user_controller";
+import EventController from "../controllers/event/event_controller";
 
 const router = Router();
 
-const userRepository: UserRepository = new UserRepository("users");
-const _controller: UserController = new UserController(userRepository);
+const eventRepository: EventRepository = new EventRepository("events");
+const _controller: EventController = new EventController(eventRepository);
 
 router.post("/", _controller.create);
-router.post("/register", _controller.register);
-router.get("/", _controller.getAll);
 
-router.post("/login", _controller.login);
+router.get("/", _controller.getAll);
 
 router.get("/:userId", (req, res) =>
   _controller.getById(req, res, parseInt(req.params.userId))
